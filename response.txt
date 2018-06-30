@@ -1,0 +1,35 @@
+I have performed following steps to perform my analysis:
+-Reading both the files into a data table
+-Performing basic exploration using plotting to determine the number of frauds/non-frauds and their basic dependence on various other features
+-Performing a range lookup to determine country based on IP address
+-Country for some 634 records could be determined so I removed them as its a small number
+-Oversampling fraud transactions to make the fraud/non fraud cases equal in number, as its a class imbalance problem and can bring a bias in the model
+-Performing some feature engineering on the time based features extracting the month, time of the day and the weekday
+-Also added a feature account_age = purchase_time-signup_time and rounding it up to the number of days. Incidently it turned out to be the most important feature
+-Added a country score =(ratio of fraud for that country) and used it instead of country as its a numerical feature and number of countries is very lasge(around 200)
+-Partitioned data in to 70% training, 15% validation and 15% testing
+-Trained a 50 tree random forest on the relevant features. It took around 3-4 hours to train the model on a machine with 8GB RAM
+-Plotted the feature importance of the model (Account age, month of purchase are the most important features)
+-The AUC curve is 99.88%. Determined a point on AUC curve using appropriate recall measure (recall = 1 means we need 100% of fraud case to be caught and we are fine with false positives)
+-The probability threshold for recall=1 is 0.088 and it catched almost 100% of cases on testing set but false postive rate is also 60%
+-A threshold of 0.5 produces 99.7% recall and false positive rate is les than 0.1%
+
+I am attaching the R code, the log output after running the code and variable importance plot for the model.
+
+
+- For each user, determine her country based on the numeric IP address. 
+The country for each purchase is determined in R code by a range lookup
+
+
+- Build a model to predict whether an activity is fraudulent or not. Explain how different assumptions about the cost of false positives vs false negatives would impact the model. 
+I have trained a random forest on the data after performing the necessary feature engineering. The AUC of the model is 99.88% which shows it is highly predictive. The critical part here is to choose the probability threshold for labelling the instance positive or negative. One can use the precision-recall matrix from the AUC curve to select an appropriate point on the AUC curve. In case the business wants to block all the fraud case as the cost of false negative(fraud case not getting detected) could be very high, then we should aim for a recall of 1 but it would mean that there would be a lot of false positives (genuine transactions getting predicted as fraud). I have selected a point for recall=1 using the validation set which results in probability threshold of 0.088. Upon testing the model was able to detect all frauds but around 60% of the genuine transactions were also labelled as fraud. An alternate strategy might be to use a recall of say 0.99 (catching 99% if fraud) and minimize false positives as well. A probability threshold of 0.5 catches 99.7% of frauds and false positive rate is just 0.1%
+
+
+
+- Your boss is a bit worried about using a model she doesn't understand for something as important as fraud detection. How would you explain her how the model is making the predictions? Not from a mathematical perspective (she couldn't care less about that), but from a user perspective. What kinds of users are more likely to be classified as at risk? What are their characteristics? 
+The Model predicts based on some attributes of the transaction. Most of the fraud transactions are done immediately after signup (within a day). 87% of the transaction done within a day of signup are fraud. Another important attibute is the month of purchase. Around 76% of all transactions is January are fraud, which is surprisingly very high as compared to other months. Also, to our astonishment people with age>60 are more liable to fraud (reason might be fraudsters are signing up with wrong age). Also some countries are more liable to fraud than others
+
+-Let's say you now have this model which can be used live to predict in real time if an activity is fraudulent or not. 
+From a product perspective, how would you use it? That is, what kind of different user experiences would you build based on the model output?
+If the model predicts a purchase as fraud the purchase can be temporarily blocked and user can be called or emailed for extra verification and only then it should be allowed to flow.
+

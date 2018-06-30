@@ -1,0 +1,301 @@
+n
+R version 3.3.3 (2017-03-06) -- "Another Canoe"
+Copyright (C) 2017 The R Foundation for Statistical Computing
+Platform: x86_64-redhat-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+[Previously saved workspace restored]
+
+> lib.dir<-"/home/DOMAIN_USERS/SANUK/users/C0244785/R-lib/"
+> library(ROSE, lib.loc = lib.dir)
+Loaded ROSE 0.0-3
+
+> library(ggplot2, lib.loc = lib.dir)
+> library(data.table, lib.loc = lib.dir)
+> library(randomForest, lib.loc=lib.dir)
+randomForest 4.6-12
+Type rfNews() to see new features/changes/bug fixes.
+
+Attaching package: ‘randomForest’
+
+The following object is masked from ‘package:ggplot2’:
+
+    margin
+
+> library(caret, lib.loc = lib.dir)
+Loading required package: lattice
+> library(bit, lib.loc = lib.dir)
+Attaching package bit
+package:bit (c) 2008-2012 Jens Oehlschlaegel (GPL-2)
+creators: bit bitwhich
+coercion: as.logical as.integer as.bit as.bitwhich which
+operator: ! & | xor != ==
+querying: print length any all min max range sum summary
+bit access: length<- [ [<- [[ [[<-
+for more help type ?bit
+
+Attaching package: ‘bit’
+
+The following object is masked from ‘package:data.table’:
+
+    setattr
+
+The following object is masked from ‘package:base’:
+
+    xor
+
+> library(bit64, lib.loc = lib.dir)
+Attaching package bit64
+package:bit64 (c) 2011-2012 Jens Oehlschlaegel
+creators: integer64 seq :
+coercion: as.integer64 as.vector as.logical as.integer as.double as.character as.bin
+logical operator: ! & | xor != == < <= >= >
+arithmetic operator: + - * / %/% %% ^
+math: sign abs sqrt log log2 log10
+math: floor ceiling trunc round
+querying: is.integer64 is.vector [is.atomic} [length] format print str
+values: is.na is.nan is.finite is.infinite
+aggregation: any all min max range sum prod
+cumulation: diff cummin cummax cumsum cumprod
+access: length<- [ [<- [[ [[<-
+combine: c rep cbind rbind as.data.frame
+WARNING don't use as subscripts
+WARNING semantics differ from integer
+for more help type ?bit64
+
+Attaching package: ‘bit64’
+
+The following object is masked from ‘package:bit’:
+
+    still.identical
+
+The following objects are masked from ‘package:base’:
+
+    :, %in%, is.double, match, order, rank
+
+> library(pROC, lib.loc = lib.dir)
+Type 'citation("pROC")' for a citation.
+
+Attaching package: ‘pROC’
+
+The following objects are masked from ‘package:stats’:
+
+    cov, smooth, var
+
+> library(ROCR, lib.loc = lib.dir)
+Loading required package: gplots
+
+Attaching package: ‘gplots’
+
+The following object is masked from ‘package:stats’:
+
+    lowess
+
+> 
+> data.dir<-"/home/DOMAIN_USERS/SANUK/users/C0244785/Data challenge/"
+> data.file<-"Fraud_Data.csv"
+> ip.file<-"IpAddress_to_Country.csv"
+> model.name<-"random-forest-run2"
+> 
+> #Read both the CSV files into data frames
+> fraud.data<-fread(paste(data.dir,data.file, sep=""), header = TRUE)
+> ip.data<-fread(paste(data.dir,ip.file, sep=""), header = TRUE)
+> 
+> #To lookup the country based on ip address range, I am usind the foverlap function from data.table package. It is a range based fast lookup. Another option is to use a join but it was very slow when tested
+> setkey(ip.data, lower_bound_ip_address, upper_bound_ip_address)
+> fraud.data[, c("lower_bound_ip_address", "upper_bound_ip_address") := ip_address]  
+> #Performing a fast range lookup
+> fraud.data2<-foverlaps(fraud.data, ip.data)[,c(3:14)]
+> 
+> #Check if we are able to determine country through ip for all record
+> print(paste("Coudnt determine country for ",sum(is.na(fraud.data2)), " records.", sep=""))
+[1] "Coudnt determine country for 634 records."
+> #Removing the 634 records for which no country can be detrmined (as this is quite small compared to the total size so can be removed)
+> fraud.data2<-fraud.data2[!is.na(fraud.data2$country),]
+> fraud.data2<-data.table(fraud.data2)
+> 
+> #as this is a class-imbalance problem and positiv einstances of fraud are only around 10% of data, we will do a oversampling to make the classes balanced
+> #We are using the ROSE package to do this
+> table(fraud.data2$class)
+
+     0      1 
+136389  14089 
+> fraud.data2 <- ovun.sample(class ~ ., data = fraud.data2, method = "over",N = (nrow(fraud.data2[fraud.data2$class==0,])*2))$data
+> table(fraud.data2$class)
+
+     0      1 
+136389 136389 
+> 
+> #We will do some feature enginering and add additional variables 
+> #Fraudsters might be purchasing or signing in at particular days of week of month or particular time of day so lets break the time into year, month, day of the week and the time of the day
+> fraud.data2$signup_time<-as.POSIXct(fraud.data2$signup_time,format="%Y-%m-%d %H:%M:%S")
+> fraud.data2$signup_timeoftheday<-as.numeric(format(fraud.data2$signup_time,"%H"))+as.numeric(format(fraud.data2$signup_time,"%M"))/60
+> fraud.data2$signup_month<-as.numeric(format(fraud.data2$signup_time,"%m"))
+> fraud.data2$signup_weekday<-weekdays(fraud.data2$signup_time)
+> 
+> fraud.data2$purchase_time<-as.POSIXct(fraud.data2$purchase_time,format="%Y-%m-%d %H:%M:%S")
+> fraud.data2$purchase_timeoftheday<-as.numeric(format(fraud.data2$purchase_time,"%H"))+as.numeric(format(fraud.data2$purchase_time,"%M"))/60
+> fraud.data2$purchase_month<-as.numeric(format(fraud.data2$purchase_time,"%m"))
+> fraud.data2$purchase_weekday<-weekdays(fraud.data2$purchase_time)
+> 
+> #Exploring the data, we find that most of the fraud purchases are immediate after signup so account age is an important feature
+> fraud.data2$account_age<-as.integer((fraud.data2$purchase_time-fraud.data2$signup_time)/3600/24)
+> 
+> #Converting categorical columns into factors
+> fraud.data2$country<-as.factor(fraud.data2$country)
+> fraud.data2$source<-as.factor(fraud.data2$source)
+> fraud.data2$browser<-as.factor(fraud.data2$browser)
+> fraud.data2$sex<-as.factor(fraud.data2$sex)
+> fraud.data2$signup_month<-as.factor(fraud.data2$signup_month)
+> fraud.data2$signup_weekday<-as.factor(fraud.data2$signup_weekday)
+> fraud.data2$purchase_month<-as.factor(fraud.data2$purchase_month)
+> fraud.data2$purchase_weekday<-as.factor(fraud.data2$purchase_weekday)
+> 
+> #A proxy for using country as feature is to derive a numerical score for each country(Fraud transaction as a % of total transactions from that country)
+> fraud.data2<-data.table(fraud.data2)
+> fraud.data2[, ':=' (country_score=mean(class)), by =  list(country)]
+> 
+> #Partitioning data into training, testing and validation 70-20-10
+> train.index <- createDataPartition(paste(fraud.data2$class, sep="-"), p = .7, list =TRUE)
+> training <- fraud.data2[ train.index$Resample1,]
+> testing <- fraud.data2[-train.index$Resample1,]
+> validation.index <- createDataPartition(paste(testing$class, sep="-"), p = 1/3, list =TRUE)
+> validation <- testing[ validation.index$Resample1,]
+> testing <- testing[-validation.index$Resample1,]
+> 
+> output.file<-paste(data.dir, model.name, "-training.csv", sep="")
+> save(training, file=output.file)
+> output.file<-paste(data.dir, model.name, "-testing.csv", sep="")
+> save(testing, file=output.file)
+> output.file<-paste(data.dir, model.name, "-validation.csv", sep="")
+> save(validation, file=output.file)
+> 
+> formula<-"class ~ country_score+purchase_value+source+browser+sex+age+signup_timeoftheday+signup_month+signup_weekday+purchase_timeoftheday+purchase_month+purchase_weekday+account_age"
+> model.rf <- randomForest(class~., data=as.data.frame(training[,c('class','country_score','purchase_value','source','browser','sex','age','signup_timeoftheday','signup_month','signup_weekday','purchase_timeoftheday','purchase_month','purchase_weekday','account_age')]), ntree=50, importance=T, na.action = na.omit)
+Warning message:
+In randomForest.default(m, y, ...) :
+  The response has five or fewer unique values.  Are you sure you want to do regression?
+> model.file<-paste(data.dir, model.name, ".rda", sep="")
+> save(model.rf, file = model.file)
+> 
+> #Check variable importance
+> varImp(model.rf)
+                        Overall
+country_score          46.52300
+purchase_value         53.50128
+source                 57.18273
+browser                38.98765
+sex                    26.23149
+age                    63.13110
+signup_timeoftheday    32.43879
+signup_month           15.03640
+signup_weekday         36.58338
+purchase_timeoftheday  35.71516
+purchase_month         22.35499
+purchase_weekday       34.60523
+account_age           107.00302
+> varImpPlot(model.rf)
+> 
+> #Test using a default threshold of 0.5
+> testing$prediction <- predict(model.rf ,testing)
+> testing$prediction<-ifelse(testing$prediction<0.5,0,1)
+> conf.matrix1<-confusionMatrix(data=testing$prediction, reference=testing$class, positive="1")
+> print(conf.matrix1)  #Accuracy is more than 99%, recall and precision also greater than 99%
+Confusion Matrix and Statistics
+
+          Reference
+Prediction     0     1
+         0 27252    38
+         1    25 27239
+                                          
+               Accuracy : 0.9988          
+                 95% CI : (0.9985, 0.9991)
+    No Information Rate : 0.5             
+    P-Value [Acc > NIR] : <2e-16          
+                                          
+                  Kappa : 0.9977          
+ Mcnemar's Test P-Value : 0.1306          
+                                          
+            Sensitivity : 0.9986          
+            Specificity : 0.9991          
+         Pos Pred Value : 0.9991          
+         Neg Pred Value : 0.9986          
+             Prevalence : 0.5000          
+         Detection Rate : 0.4993          
+   Detection Prevalence : 0.4998          
+      Balanced Accuracy : 0.9988          
+                                          
+       'Positive' Class : 1               
+                                          
+> 
+> #AUC curve
+> roc_obj <- roc(testing$class, testing$prediction)
+> auc(roc_obj)  #Area under the curve 99.81%
+Area under the curve: 0.9988
+> 
+> #Lets tune our threshold a bit now
+> validation$prediction <- predict(model.rf ,validation)
+> pred <- prediction( validation$prediction, validation$class)  #prediction object using ROCR package
+> perf <- performance(pred,"prec","rec")  #generating performance measure table using ROCR package
+> df <- data.frame(cut = perf@alpha.values[[1]], prec = perf@y.values[[1]], rec = perf@x.values[[1]])  #Setting table into a dataframe
+> #If we dont want to miss any fraud case then the recall has to be 1
+> optimum<-df[which(df$rec>=1), ]
+> if(nrow(optimum)>=1){
++   print("optimal cutoff to attain 100% recall ie to catch all fraud although that will mean there will be false positives")
++   print(optimum[1,])
++ }else{
++   print("The required recall is impossible to achieve with current model")
++ }
+[1] "optimal cutoff to attain 100% recall ie to catch all fraud although that will mean there will be false positives"
+       cut      prec rec
+1656 0.088 0.6228992   1
+> 
+> #Now lets test this new cutoff on our testing set
+> testing$prediction <- predict(model.rf ,testing)
+> testing$prediction<-ifelse(testing$prediction<optimum$cut[1],0,1)
+> conf.matrix2<-confusionMatrix(data=testing$prediction, reference=testing$class, positive="1")
+> print(conf.matrix2)  #Accuracy is more than 99%, recall and precision also greater than 99%
+Confusion Matrix and Statistics
+
+          Reference
+Prediction     0     1
+         0 10774     2
+         1 16503 27275
+                                          
+               Accuracy : 0.6975          
+                 95% CI : (0.6936, 0.7013)
+    No Information Rate : 0.5             
+    P-Value [Acc > NIR] : < 2.2e-16       
+                                          
+                  Kappa : 0.3949          
+ Mcnemar's Test P-Value : < 2.2e-16       
+                                          
+            Sensitivity : 0.9999          
+            Specificity : 0.3950          
+         Pos Pred Value : 0.6230          
+         Neg Pred Value : 0.9998          
+             Prevalence : 0.5000          
+         Detection Rate : 0.5000          
+   Detection Prevalence : 0.8025          
+      Balanced Accuracy : 0.6975          
+                                          
+       'Positive' Class : 1               
+                                          
+> #It catches almost all frauds except 1 although there are few false positives
+> 
+> proc.time()
+    user   system  elapsed 
+9364.892    1.552 9377.890 
